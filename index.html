@@ -1,0 +1,363 @@
+import React, { useState } from 'react';
+import { Play, BrainCircuit, Target, CheckCircle2, XCircle, ArrowRight, ArrowLeft, RefreshCcw, BookOpen, Crown, PenTool } from 'lucide-react';
+
+// --- Audio Helper for Interactive Sounds ---
+const playSound = (type) => {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    osc.connect(gainNode);
+    gainNode.connect(ctx.destination);
+
+    if (type === 'click') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(600, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(300, ctx.currentTime + 0.1);
+      gainNode.gain.setValueAtTime(0.2, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.1);
+    } else if (type === 'success') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(400, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.2);
+      gainNode.gain.setValueAtTime(0.2, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.3);
+    } else if (type === 'error') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(300, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(150, ctx.currentTime + 0.3);
+      gainNode.gain.setValueAtTime(0.2, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.3);
+    }
+  } catch (e) {
+    console.log("Audio not supported");
+  }
+};
+
+export default function App() {
+  const [step, setStep] = useState('login'); // login, selectMode, quiz, result
+  const [userName, setUserName] = useState('');
+  const [mode, setMode] = useState(''); // 'pre' or 'post'
+  
+  // Quiz state
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [score, setScore] = useState(0);
+  const [showExplanation, setShowExplanation] = useState(false);
+  const [isCorrect, setIsCorrect] = useState(null);
+
+  // أسئلة الاختبار القبلي (نشاط التهيئة)
+  const preTestQuestions = [
+    {
+      q: 'ما هو الهدف الأساسي من برامج تعليم التفكير؟',
+      options: ['تدريس محتوى دراسي وحفظه', 'تعليم مهارات التفكير وتطوير العمليات العقلية', 'تقليل عدد الساعات الدراسية', 'الاستغناء عن المعلم'],
+      answer: 1,
+      explanation: 'الهدف الرئيسي هو تعليم مهارات التفكير وتطوير العمليات المعرفية، وليس مجرد تدريس محتوى دراسي محدد.'
+    },
+    {
+      q: 'في قبعات التفكير الست، ما هي القبعة التي تهتم بالمشاعر والعواطف والانطباعات؟',
+      options: ['القبعة البيضاء', 'القبعة السوداء', 'القبعة الحمراء', 'القبعة الزرقاء'],
+      answer: 2,
+      explanation: 'القبعة الحمراء مخصصة للتفكير العاطفي والتعبير عن المشاعر والانطباعات تجاه الموقف حتى دون وجود مبررات منطقية.'
+    },
+    {
+      q: 'برنامج الكورت (CORT) يتكون من ستة أجزاء، ما هو الهدف من "الكورت الأول"؟',
+      options: ['العمل والتنفيذ', 'التفاعل والمناقشة', 'تنظيم التفكير', 'توسيع مجال الإدراك والتفكير'],
+      answer: 3,
+      explanation: 'الكورت الأول يهدف إلى "توسيع مجال الإدراك" والنظر إلى الموقف من جميع جوانبه قبل اتخاذ أي قرار.'
+    },
+    {
+      q: 'وفقاً لبرنامج الذكاءات المتعددة لجاردنر، القدرة على تصوير العالم داخلياً وتذكر الأماكن تُعرف بـ:',
+      options: ['الذكاء البصري المكاني', 'الذكاء الجسمي الحركي', 'الذكاء المنطقي', 'الذكاء الطبيعي'],
+      answer: 0,
+      explanation: 'الذكاء البصري المكاني هو القدرة على تصوير المكان داخلياً، وتذكر الأماكن والخرائط الذهنية وتتبع الأثر.'
+    },
+    {
+      q: 'في استراتيجية سكامبر (SCAMPER)، إلى ماذا يرمز حرف الـ (C - Combine)؟',
+      options: ['التبديل', 'الدمج', 'التعديل', 'الحذف'],
+      answer: 1,
+      explanation: 'يرمز حرف الـ C إلى Combine (الدمج)، وهو الجمع بين فكرتين أو عنصرين لإنتاج فكرة جديدة تختلف في خصائصها.'
+    }
+  ];
+
+  // أسئلة الاختبار البعدي (نشاط ختامي)
+  const postTestQuestions = [
+    {
+      q: 'أي من الذكاءات التالية يعني قدرة الفرد على التعمق داخل نفسه ومعرفة حدود قدراته؟',
+      options: ['الذكاء الاجتماعي', 'الذكاء اللغوي', 'الذكاء الذاتي', 'الذكاء المنطقي'],
+      answer: 2,
+      explanation: 'الذكاء الذاتي يعني تعمق الفرد داخل نفسه، ومعرفة حدود قدراته وسماته التي تميزه عن غيره.'
+    },
+    {
+      q: 'في استراتيجية القبعات الست، ماذا تمثل القبعة الخضراء؟',
+      options: ['التفكير العاطفي', 'التفكير الناقد', 'التفكير الإبداعي والمقترحات', 'جمع الحقائق والأرقام'],
+      answer: 2,
+      explanation: 'القبعة الخضراء ترمز للنمو والابتكار، وهي مخصصة للتفكير الإبداعي والبحث عن البدائل (ماذا لو؟).'
+    },
+    {
+      q: 'من المعوقات (النفسية) التي تحد من التفكير المنتج:',
+      options: ['نقص المهارات التعليمية', 'نقص الدعم الاجتماعي', 'الخوف من الفشل وانخفاض الثقة بالنفس', 'القصور في المعرفة'],
+      answer: 2,
+      explanation: 'الخوف من الفشل وانخفاض الثقة بالنفس يُعدان من أبرز المعوقات "النفسية" التي تمنع الفرد من المخاطرة وطرح أفكار مبتكرة.'
+    },
+    {
+      q: 'التفكير الذي يجمع بين التفكير الإبداعي (لتوليد الحلول) والتفكير الناقد (لتقييمها) يسمى:',
+      options: ['التفكير النمطي', 'التفكير المنتج', 'الذكاء اللغوي', 'الاستبصار'],
+      answer: 1,
+      explanation: 'التفكير المنتج يدمج بين إنتاج الأفكار الإبداعية وإصدار الأحكام الناقدة عليها للوصول لنتائج عملية وإيجابية.'
+    },
+    {
+      q: 'في نموذج جيلفورد لحل المشكلات، ماذا يحدث إذا لم يجد الفرد حلاً جاهزاً في ذاكرته عند مواجهة مشكلة؟',
+      options: ['يستسلم ويتوقف عن التفكير', 'ينتقل إلى التفكير المتشعب لتوليد بدائل جديدة', 'يعتمد على التفكير العاطفي', 'يتجاهل المثير الخارجي'],
+      answer: 1,
+      explanation: 'في نموذج جيلفورد، إذا لم يجد الفرد حلاً جاهزاً في مخزونه المعرفي، فإنه ينتقل لمرحلة "التفكير المتشعب" لتوليد بدائل وحلول إبداعية جديدة.'
+    }
+  ];
+
+  const handleStart = (e) => {
+    e.preventDefault();
+    if (userName.trim()) {
+      playSound('click');
+      setStep('selectMode');
+    }
+  };
+
+  const selectMode = (selected) => {
+    playSound('click');
+    setMode(selected);
+    setStep('quiz');
+    setCurrentQuestion(0);
+    setScore(0);
+    setShowExplanation(false);
+  };
+
+  const currentQuestionsSet = mode === 'pre' ? preTestQuestions : postTestQuestions;
+  const currentTitle = mode === 'pre' ? 'الاختبار القبلي (نشاط تهيئة)' : 'الاختبار البعدي (نشاط ختامي)';
+
+  const handleAnswer = (index) => {
+    if (showExplanation) return;
+    
+    const correct = index === currentQuestionsSet[currentQuestion].answer;
+    setIsCorrect(correct);
+    setShowExplanation(true);
+    
+    if (correct) {
+      playSound('success');
+      setScore(score + 1);
+    } else {
+      playSound('error');
+    }
+  };
+
+  const nextQuestion = () => {
+    playSound('click');
+    setShowExplanation(false);
+    if (currentQuestion + 1 < currentQuestionsSet.length) {
+      setCurrentQuestion(currentQuestion + 1);
+    } else {
+      setStep('result');
+    }
+  };
+
+  const resetActivity = () => {
+    playSound('click');
+    setStep('selectMode');
+  };
+
+  return (
+    <div dir="rtl" className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col items-center py-10 px-4">
+      <div className="max-w-3xl w-full bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100">
+        
+        {/* Header */}
+        <div className="bg-emerald-600 p-6 text-white text-center">
+          <h1 className="text-3xl font-bold mb-2 flex items-center justify-center gap-2">
+            <BrainCircuit className="w-8 h-8" />
+            برامج تعليم التفكير: طبيعتها وانواعها المختلفة
+          </h1>
+          <p className="text-emerald-100">تطبيق تفاعلي للمفاهيم الأساسية</p>
+        </div>
+
+        <div className="p-8">
+          {/* STEP 1: LOGIN */}
+          {step === 'login' && (
+            <div className="flex flex-col items-center animate-in fade-in zoom-in duration-500">
+              <BookOpen className="w-20 h-20 text-emerald-500 mb-6" />
+              <h2 className="text-2xl font-bold mb-6">أهلاً بك في منصة التعلم التفاعلي</h2>
+              <form onSubmit={handleStart} className="w-full max-w-md flex flex-col gap-4">
+                <input
+                  type="text"
+                  placeholder="الرجاء إدخال اسمك للبدء..."
+                  className="w-full p-4 border-2 border-slate-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition-all text-lg"
+                  value={userName}
+                  onChange={(e) => setUserName(e.target.value)}
+                  required
+                />
+                <button
+                  type="submit"
+                  disabled={!userName.trim()}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold py-4 rounded-xl transition-all flex justify-center items-center gap-2 text-lg"
+                >
+                  ابدأ النشاط <Play className="w-5 h-5" />
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* STEP 2: SELECT MODE */}
+          {step === 'selectMode' && (
+            <div className="flex flex-col items-center animate-in fade-in duration-500">
+              <h2 className="text-2xl font-bold mb-2">أهلاً بك يا {userName}!</h2>
+              <p className="text-slate-500 mb-8">اختر نوع النشاط الذي تود القيام به الآن:</p>
+              
+              <div className="grid md:grid-cols-2 gap-6 w-full">
+                <button
+                  onClick={() => selectMode('pre')}
+                  className="flex flex-col items-center p-8 border-2 border-blue-100 bg-blue-50 hover:bg-blue-100 hover:border-blue-300 rounded-2xl transition-all group"
+                >
+                  <PenTool className="w-16 h-16 text-blue-500 mb-4 group-hover:scale-110 transition-transform" />
+                  <h3 className="text-2xl font-bold text-blue-700 mb-2">نشاط تهيئة</h3>
+                  <p className="text-blue-600/80 text-center">اختبار قبلي لقياس المعرفة المبدئية بالمفاهيم</p>
+                </button>
+
+                <button
+                  onClick={() => selectMode('post')}
+                  className="flex flex-col items-center p-8 border-2 border-emerald-100 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-300 rounded-2xl transition-all group"
+                >
+                  <Target className="w-16 h-16 text-emerald-500 mb-4 group-hover:scale-110 transition-transform" />
+                  <h3 className="text-2xl font-bold text-emerald-700 mb-2">نشاط ختامي</h3>
+                  <p className="text-emerald-600/80 text-center">اختبار بعدي لتقييم مدى استيعاب محتوى المحاضرة</p>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 3: QUIZ ACTIVITY (Shared for Pre and Post) */}
+          {step === 'quiz' && (
+            <div className="flex flex-col animate-in fade-in duration-500">
+              <div className="flex justify-between items-center mb-6 border-b pb-4">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-800">{currentTitle}</h2>
+                  <p className="text-slate-500">السؤال {currentQuestion + 1} من {currentQuestionsSet.length}</p>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="bg-emerald-100 text-emerald-700 px-4 py-2 rounded-lg font-bold">
+                    النقاط: {score}
+                  </div>
+                  <button onClick={resetActivity} className="p-2 text-slate-400 hover:text-emerald-600 bg-slate-100 rounded-lg transition-colors" title="العودة للقائمة">
+                    <ArrowRight className="w-6 h-6" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 mb-6">
+                <h3 className="text-xl font-bold text-slate-800 mb-6 leading-relaxed">
+                  {currentQuestionsSet[currentQuestion].q}
+                </h3>
+                <div className="flex flex-col gap-3">
+                  {currentQuestionsSet[currentQuestion].options.map((option, idx) => {
+                    let btnClass = "text-right p-4 rounded-xl border-2 transition-all font-medium text-lg ";
+                    
+                    if (!showExplanation) {
+                      btnClass += "border-slate-200 bg-white hover:border-emerald-400 hover:bg-emerald-50 cursor-pointer";
+                    } else {
+                      if (idx === currentQuestionsSet[currentQuestion].answer) {
+                        btnClass += "border-emerald-500 bg-emerald-100 text-emerald-800"; // Correct
+                      } else {
+                        btnClass += "border-slate-200 bg-slate-100 text-slate-400 opacity-60 cursor-not-allowed"; // Wrong/Unselected
+                      }
+                    }
+
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => handleAnswer(idx)}
+                        disabled={showExplanation}
+                        className={btnClass}
+                      >
+                        {option}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Feedback Box - Neutral and Corrective */}
+              {showExplanation && (
+                <div className={`p-6 rounded-xl border-2 mb-6 animate-in slide-in-from-bottom-4 fade-in ${isCorrect ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+                  <div className="flex items-start gap-3">
+                    {isCorrect ? <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0 mt-1" /> : <XCircle className="w-6 h-6 text-red-600 shrink-0 mt-1" />}
+                    <div>
+                      <h4 className={`font-bold text-lg mb-1 ${isCorrect ? 'text-emerald-800' : 'text-red-800'}`}>
+                        {isCorrect ? 'إجابة صحيحة' : 'إجابة غير دقيقة'}
+                      </h4>
+                      <p className={`text-sm md:text-base ${isCorrect ? 'text-emerald-700' : 'text-red-700'}`}>
+                        {currentQuestionsSet[currentQuestion].explanation}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {showExplanation && (
+                <button
+                  onClick={nextQuestion}
+                  className="self-end bg-slate-800 hover:bg-slate-700 text-white px-8 py-3 rounded-xl font-bold transition-colors flex items-center gap-2"
+                >
+                  {currentQuestion + 1 === currentQuestionsSet.length ? 'إظهار النتيجة' : 'السؤال التالي'}
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* STEP 4: RESULTS */}
+          {step === 'result' && (
+            <div className="flex flex-col items-center text-center animate-in zoom-in duration-500 py-8">
+              <div className="relative mb-6">
+                <Crown className="w-24 h-24 text-yellow-400" />
+                <div className="absolute -bottom-2 -right-2 bg-emerald-500 text-white w-10 h-10 rounded-full flex items-center justify-center font-bold border-4 border-white">
+                  {score}
+                </div>
+              </div>
+              
+              <h2 className="text-3xl font-bold text-slate-800 mb-2">اكتمل التقييم، {userName}</h2>
+              <p className="text-lg text-slate-600 mb-8">
+                حصلت في هذا النشاط على <strong className="text-emerald-600 text-xl">{score}</strong> من <strong className="text-emerald-600 text-xl">{currentQuestionsSet.length}</strong>.
+              </p>
+
+              <div className="bg-blue-50 border border-blue-100 p-6 rounded-2xl max-w-md w-full mb-8">
+                <h3 className="font-bold text-blue-800 mb-2">رسالة الختام</h3>
+                <p className="text-blue-600 text-sm leading-relaxed">
+                  سواء كان هذا اختباراً قبلياً لتقييم مستواك المبدئي، أو بعدياً لقياس ما تعلمته، فإن الهدف الأساسي هو تحديد الفجوات المعرفية والعمل على تحسينها تماماً كما نهدف من خلال برامج تعليم التفكير إلى بناء عقول قادرة على الإبداع وحل المشكلات.
+                </p>
+              </div>
+
+              <div className="flex gap-4">
+                <button
+                  onClick={() => selectMode(mode)}
+                  className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-6 py-3 rounded-xl font-bold transition-colors flex items-center gap-2"
+                >
+                  <RefreshCcw className="w-5 h-5" /> إعادة الاختبار
+                </button>
+                <button
+                  onClick={resetActivity}
+                  className="bg-slate-800 hover:bg-slate-700 text-white px-6 py-3 rounded-xl font-bold transition-colors"
+                >
+                  العودة للقائمة
+                </button>
+              </div>
+            </div>
+          )}
+          
+        </div>
+      </div>
+    </div>
+  );
+}
